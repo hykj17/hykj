@@ -1,0 +1,7 @@
+{
+  "build": {
+    "command": "echo 'No build required - static HTML game'",
+    "output": ".",
+    "rootDir": "."
+  }
+}

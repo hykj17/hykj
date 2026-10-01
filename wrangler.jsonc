@@ -1,0 +1,12 @@
+// Cloudflare Workers 静态资产部署配置
+// 部署命令 npx wrangler deploy 依靠本文件定位静态文件目录（自动检测找不到根目录直放的 index.html）
+{
+  "name": "unify-game",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    // 静态文件在仓库根目录：index.html / pages.json 等
+    "directory": ".",
+    // 未命中路径时回退到 index.html（单页托管）
+    "not_found_handling": "single-page-application"
+  }
+}
