@@ -171,6 +171,13 @@
     color: #f87171;
     animation: timer-pulse 0.5s infinite alternate;
   }
+  /* 攻击时间结束 → 进入「仅内政」状态：绿色，明确告知不可攻击但可做建造/政治 */
+  #turn-timer.locked {
+    background: linear-gradient(135deg, #14532d, #052e16);
+    border-color: rgba(34,197,94,0.5);
+    color: #86efac;
+    animation: none;
+  }
   @keyframes timer-pulse {
     from { transform: scale(1); }
     to { transform: scale(1.05); }
@@ -1356,8 +1363,10 @@
   .tut-btn:active { transform: scale(0.96); }
   .tut-btn.next { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; }
   .tut-btn.skip { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+  .tut-btn.prev { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
   .tut-btn.next:hover { opacity: 0.88; }
   .tut-btn.skip:hover { color: #94a3b8; }
+  .tut-btn.prev:hover { color: #cbd5e1; }
   .tut-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
   /* Spotlight highlight box (absolute, pointer-events none) */
@@ -3643,9 +3652,9 @@
     <span id="turn-name">-</span>
     <div id="round-badge">第 <span id="round-num">1</span> 回合</div>
     <div id="mode-badge" style="display:none;background:#7c3aed;color:#fff;padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;">-</div>
-    <div id="turn-timer">
-      <span id="timer-icon">⏱️</span>
-      <span id="timer-seconds">30</span><span style="font-size:0.75rem">s</span>
+    <div id="turn-timer" title="攻击时间：窗口内可发起攻击，结束后仅禁攻击，建造/政治仍可">
+      <span id="timer-icon">⚔️</span><span id="timer-label" style="font-size:0.7rem;opacity:0.8;margin:0 4px;">攻击</span>
+      <span id="timer-seconds">60</span><span id="timer-unit" style="font-size:0.75rem">s</span>
     </div>
   </div>
   <div id="header-right" style="font-size:0.88rem;color:var(--muted)">鼠标悬停查看格子 · 拖拽格子发起行动 · 右键招募兵种</div>
@@ -3701,6 +3710,16 @@
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;font-size:1.25rem;color:var(--text);">📖 玩法说明</h2>
       <button id="help-close" style="background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;line-height:1;">✕</button>
+    </div>
+
+    <!-- 视频教程（玩法概念动画） -->
+    <div style="margin:0 0 16px;">
+      <video id="tutorial-video" src="tutorial.mp4" controls playsinline preload="metadata"
+             onerror="this.parentElement.style.display='none'"
+             style="width:100%;border-radius:10px;background:#0b1120;display:block;aspect-ratio:16/9;"></video>
+      <p style="margin:8px 0 0;font-size:0.75rem;color:var(--muted);line-height:1.5;">
+        ▶️ 上方为玩法概念动画，点播放即可观看（建议在 WiFi 下观看；若无法播放，文字说明见下方）。
+      </p>
     </div>
 
     <div class="help-section" style="margin-bottom:14px;">
@@ -4361,6 +4380,7 @@
   <div class="tut-footer">
     <div class="tut-progress" id="tut-progress"></div>
     <div class="tut-btns">
+      <button class="tut-btn prev" id="tut-prev">← 上一步</button>
       <button class="tut-btn skip" id="tut-skip">跳过教学</button>
       <button class="tut-btn next" id="tut-next">下一步 →</button>
     </div>
@@ -4654,85 +4674,93 @@
 </div>
 
 <!-- MAP EDITOR SIDEBAR -->
-<!-- 编辑器属性面板（点选式） -->
+<!-- 编辑器属性面板（统一笔刷式） -->
 <div id="mapeditor-panel">
   <div class="mep-header">
     <div class="mep-title">🗺️ 地图编辑器</div>
-    <div class="mep-hint">点击格子选择 | 笔刷绘制 | 右键菜单</div>
+    <div class="mep-hint">选好笔刷后在地图上点击 / 拖拽绘制</div>
   </div>
   <div class="mep-body">
-    <!-- 笔刷工具 -->
+    <!-- 笔刷：阵营 -->
     <div class="mep-section">
-      <div class="mep-section-title">🖌️ 笔刷工具</div>
-    <div class="mep-row">
-      <span class="mep-row-label">地形</span>
-      <select class="mep-select" id="mep-brush-terrain" onchange="if(this.value)editorBrushTerrain=this.value">
+      <div class="mep-section-title">🎨 笔刷 · 阵营</div>
+      <div id="mep-faction-bar" style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="mep-fbtn is-active" data-f="-1" onclick="setBrushFaction(-1)" style="flex:1;min-width:48px;padding:8px 4px;border-radius:6px;border:2px solid #94a3b8;background:#334155;color:#e2e8f0;cursor:pointer;font-size:0.82rem;">无主</button>
+        <button class="mep-fbtn" data-f="0" onclick="setBrushFaction(0)" style="flex:1;min-width:48px;padding:8px 4px;border-radius:6px;border:2px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;font-size:0.82rem;">蓝</button>
+        <button class="mep-fbtn" data-f="1" onclick="setBrushFaction(1)" style="flex:1;min-width:48px;padding:8px 4px;border-radius:6px;border:2px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;font-size:0.82rem;">红</button>
+        <button class="mep-fbtn" data-f="2" onclick="setBrushFaction(2)" style="flex:1;min-width:48px;padding:8px 4px;border-radius:6px;border:2px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;font-size:0.82rem;">绿</button>
+        <button class="mep-fbtn" data-f="3" onclick="setBrushFaction(3)" style="flex:1;min-width:48px;padding:8px 4px;border-radius:6px;border:2px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;font-size:0.82rem;">橙</button>
+      </div>
+    </div>
+
+    <!-- 笔刷：属性 -->
+    <div class="mep-section">
+      <div class="mep-section-title">🖌️ 笔刷 · 属性</div>
+      <div class="mep-row">
+        <span class="mep-row-label">地形</span>
+        <select class="mep-select" id="mep-brush-terrain" onchange="editorBrushTerrain=this.value">
           <option value="plain">平原</option>
           <option value="mountain">山地</option>
           <option value="highland">高原</option>
+          <option value="ocean">海洋</option>
         </select>
-    </div>
-    <div class="mep-row">
-      <span class="mep-row-label">据点</span>
-      <select class="mep-select" id="mep-brush-value" onchange="if(this.value!=='')editorBrushValue=parseInt(this.value)">
+      </div>
+      <div class="mep-row">
+        <span class="mep-row-label">据点</span>
+        <select class="mep-select" id="mep-brush-value" onchange="editorBrushValue=parseInt(this.value)">
           <option value="0">无</option>
           <option value="1">高价值</option>
         </select>
-    </div>
-    <div class="mep-row">
-      <span class="mep-row-label">兵力</span>
-      <input class="mep-number" id="mep-brush-troops" type="number" min="0" max="9999" value="1" onchange="if(this.value!==undefined)editorBrushTroops=parseInt(this.value)||0">
-    </div>
-    <div class="mep-row">
-      <span class="mep-row-label">颜色</span>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#3b82f6;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#3b82f6';mepRefreshBrushColorPreview();" title="蓝" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#ef4444;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#ef4444';mepRefreshBrushColorPreview();" title="红" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#22c55e;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#22c55e';mepRefreshBrushColorPreview();" title="绿" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#f59e0b;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#f59e0b';mepRefreshBrushColorPreview();" title="橙" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#8b5cf6;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#8b5cf6';mepRefreshBrushColorPreview();" title="紫" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#06b6d4;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#06b6d4';mepRefreshBrushColorPreview();" title="青" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#ec4899;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#ec4899';mepRefreshBrushColorPreview();" title="粉" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#14b8a6;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#14b8a6';mepRefreshBrushColorPreview();" title="青绿" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#64748b;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#64748b';mepRefreshBrushColorPreview();" title="灰" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <div class="mep-color-swatch" style="width:32px;height:32px;background:#fbbf24;cursor:pointer;border:2px solid #334155;border-radius:4px;" onclick="editorBrushColor='#fbbf24';mepRefreshBrushColorPreview();" title="黄" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'"></div>
-        <input type="color" id="mep-brush-color" value="#3b82f6" style="width:48px;height:36px;border:2px solid #334155;cursor:pointer;border-radius:4px;" onchange="editorBrushColor=this.value" title="自定义颜色" onmouseenter="this.style.borderColor='#fff'" onmouseleave="this.style.borderColor='#334155'">
       </div>
-    </div>
-    <div style="margin-top:4px;font-size:0.72rem;color:#64748b;">💡 点击/拖拽地图格子来应用笔刷</div>
-  </div>
-
-    <!-- 选中格子信息 -->
-    <div class="mep-section">
-      <div class="mep-section-title">⚙️ 快捷操作</div>
-      <div style="display:flex;flex-direction:column;gap:4px;">
-        <button class="mep-action-btn mep-btn-fill" onclick="mepFillPlain()" style="background:#22c55e;">🌿 填充平原</button>
-        <button class="mep-action-btn mep-btn-fill" onclick="mepFillOwner(-1)" style="background:#6b7280;">🚫 清除所有权</button>
-        <button class="mep-action-btn mep-btn-fill" onclick="mepClearAll()" style="background:#ef4444;">🗑️ 清空地图</button>
+      <div class="mep-row">
+        <span class="mep-row-label">兵力</span>
+        <input class="mep-number" id="mep-brush-troops" type="number" min="0" max="9999" value="1" onchange="editorBrushTroops=parseInt(this.value)||0">
       </div>
+      <div class="mep-row">
+        <span class="mep-row-label">覆盖色</span>
+        <input type="color" id="mep-brush-color" value="#3b82f6" style="width:48px;height:34px;border:2px solid #334155;cursor:pointer;border-radius:4px;" onchange="editorBrushColor=this.value" title="覆盖阵营默认色（可选）">
+        <button class="mep-action-btn" style="padding:4px 8px;font-size:0.72rem;background:#475569;" onclick="editorBrushColor=null;mepRefreshBrushColorPreview()">默认</button>
+      </div>
+      <div style="margin-top:4px;font-size:0.72rem;color:#64748b;">💡 选中具体阵营后留"默认"即使用该阵营色</div>
     </div>
 
-    <!-- 势力面板 -->
+    <!-- 选中格信息 -->
     <div class="mep-section">
-      <div class="mep-section-title">👥 势力列表</div>
+      <div class="mep-section-title">🔍 选中格</div>
+      <div id="mep-hex-info" style="font-size:0.8rem;color:#cbd5e1;min-height:20px;">点击任意格子查看</div>
+    </div>
+
+    <!-- 势力概览 -->
+    <div class="mep-section">
+      <div class="mep-section-title">👥 势力概览</div>
       <div id="mep-faction-list" style="min-height:36px;"></div>
       <div id="mep-faction-hint" style="font-size:0.72rem;color:#f97316;margin-top:6px;display:none;">
-        ⚠️ 至少需要 2 种颜色(势力)才能开始游戏！
+        ⚠️ 至少需要 2 个阵营才能开始游戏！
       </div>
     </div>
 
-    <!-- 地图名称 -->
+    <!-- 地图信息 -->
     <div class="mep-section">
       <div class="mep-section-title">📝 地图信息</div>
       <input class="mep-input" id="mep-map-name" type="text" placeholder="地图名称…" maxlength="40">
       <div id="mep-map-stats" style="color:#64748b;font-size:0.78rem;margin-top:4px;"></div>
+    </div>
+
+    <!-- 快捷操作 -->
+    <div class="mep-section">
+      <div class="mep-section-title">⚡ 快捷操作</div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <button class="mep-action-btn mep-btn-fill" onclick="mepFillPlain()" style="background:#22c55e;">🌿 填充平原</button>
+        <button class="mep-action-btn mep-btn-fill" onclick="mepFillOwner(-1)" style="background:#6b7280;">🚫 清除归属</button>
+        <button class="mep-action-btn mep-btn-fill" onclick="mepClearAll()" style="background:#ef4444;">🗑️ 清空地图</button>
+      </div>
     </div>
   </div>
   <div class="mep-footer">
     <div class="mep-actions">
       <button class="mep-action-btn mep-btn-save" onclick="saveMapToFile()">💾 保存</button>
       <button class="mep-action-btn mep-btn-load" onclick="importMapFromFile()">📂 加载</button>
-      <button class="mep-action-btn mep-btn-start" onclick="startGameFromEditor('pve')" style="background:#059669;">▶ 开始游戏</button>
+      <button class="mep-action-btn mep-btn-start" onclick="startGameFromEditor('pve')" style="background:#059669;">▶ 开始</button>
       <button class="mep-action-btn mep-btn-back" onclick="backToMainFromEditor()">← 返回</button>
     </div>
   </div>
@@ -4828,17 +4856,27 @@ function clampView() {
   const cw = canvas.width, ch = canvas.height;
   if (!(w > 0 && h > 0) || cw <= 0 || ch <= 0) return;
   const mw = w * viewScale, mh = h * viewScale;
-  // 过扫描余量：即使地图完全可见（开局 contain 适配），也允许向四周小幅平移视角，
-  // WASD/方向键随时可用；地图超出视口时仍夹紧边缘，杜绝整屏空白。
-  const overX = cw * 0.15, overY = ch * 0.15;
-  if (mw <= cw) {
+  // 视角平移策略：允许 WASD / 方向键在任何缩放下自由平移视角——
+  // 只要至少保留 20% 地图在视野内即可（避免整张地图滑出屏幕），其余方向放開。
+  // 这样无论开局看全图还是放大后，左右上下都能持续移动，不会“按了没反应”。
+  const keepX = Math.max(mw * 0.2, 1);
+  const keepY = Math.max(mh * 0.2, 1);
+  if (mw >= cw) {
+    // 地图比视口宽：标准夹紧到边缘
+    viewOX = Math.min(0, Math.max(cw - mw, viewOX));
+  } else {
+    // 地图比视口窄：允许整体平移，最多只留 20% 可见
     const c = (cw - mw) / 2;
-    viewOX = Math.min(c + overX, Math.max(c - overX, viewOX));
-  } else viewOX = Math.min(0, Math.max(cw - mw, viewOX));
-  if (mh <= ch) {
+    const over = (cw - keepX) / 2;
+    viewOX = Math.min(c + over, Math.max(c - over, viewOX));
+  }
+  if (mh >= ch) {
+    viewOY = Math.min(0, Math.max(ch - mh, viewOY));
+  } else {
     const c = (ch - mh) / 2;
-    viewOY = Math.min(c + overY, Math.max(c - overY, viewOY));
-  } else viewOY = Math.min(0, Math.max(ch - mh, viewOY));
+    const over = (ch - keepY) / 2;
+    viewOY = Math.min(c + over, Math.max(c - over, viewOY));
+  }
 }
 
 function initView() {
@@ -4998,11 +5036,15 @@ const EDITOR_COLOR_OPTIONS = [
   { color: '#64748b', name: '灰' }, { color: '#fbbf24', name: '黄' },
 ];
 
-// 地图编辑器可选阵营（只有玩家和AI两种）
+// 地图编辑器固定 4 阵营（与游戏 PLAYERS[0..3] 一一对应），笔刷直接按 id 涂格
 const EDITOR_FACTIONS = [
-  { id: 0, name: '玩家', tag: '玩家', color: '#3b82f6', light: '#93c5fd', dark: '#1d4ed8', isHuman: true },
-  { id: 1, name: 'AI', tag: 'AI', color: '#ef4444', light: '#fca5a5', dark: '#b91c1c', isHuman: false },
+  { id: 0, name: '蓝', color: '#3b82f6', light: '#93c5fd', dark: '#1d4ed8' },
+  { id: 1, name: '红', color: '#ef4444', light: '#fca5a5', dark: '#b91c1c' },
+  { id: 2, name: '绿', color: '#22c55e', light: '#86efac', dark: '#15803d' },
+  { id: 3, name: '橙', color: '#f59e0b', light: '#fcd34d', dark: '#b45309' },
 ];
+// 阵营 id → 笔刷按钮的简短标签
+const EDITOR_FACTION_LABELS = ['蓝', '红', '绿', '橙'];
 
 // AI 随机配色池
 const AI_COLOR_POOL = [
@@ -6717,10 +6759,11 @@ function tickPolitics() {
 }
 
 // ---- 游戏状态 ----
-const TURN_TIME = 30; // 每回合30秒
+const TURN_TIME = 60; // 每回合60秒（攻击时间窗口：窗口内可发起攻击；窗口结束后仅禁用攻击，建造/处理政治事件等内政仍可进行）
 let turnTimer = null;
 let aiTimer = null;
 let turnTimeLeft = TURN_TIME;
+let attackAllowed = true; // 攻击时间窗口是否激活：true=可攻击；60秒攻击时间结束后置 false（仅禁用攻击，建造/政治等内政照常）
 let animQueue = []; // { type, hexIdx, color, progress }
 let animFrame = null;
 let G_ANIM_T = 0;    // 动画时钟（毫秒），由 render() 每帧更新，供 drawHex 做时间驱动动画
@@ -6761,21 +6804,23 @@ let editorIsDragging = false;   // 是否正在拖拽绘制
 function startTurnTimer() {
   stopTurnTimer();
   turnTimeLeft = TURN_TIME;
+  attackAllowed = true; // 新一轮攻击时间开始：恢复攻击权限
   console.log(`⏱️ startTurnTimer: 玩家${currentPlayer}(${PLAYERS[currentPlayer].name}) 计时器启动，剩余${TURN_TIME}秒`);
   updateTimerDisplay();
-  
+
   turnTimer = setInterval(() => {
     turnTimeLeft--;
     updateTimerDisplay();
-    
+
     if (turnTimeLeft <= 0) {
-      console.log(`⏱️ 计时器到期！玩家${currentPlayer}(${PLAYERS[currentPlayer].name}) isHuman=${PLAYERS[currentPlayer].isHuman} gameOver=${gameOver}`);
+      console.log(`⏱️ 攻击时间到期！玩家${currentPlayer}(${PLAYERS[currentPlayer].name}) isHuman=${PLAYERS[currentPlayer].isHuman} gameOver=${gameOver}`);
       stopTurnTimer();
-      // 时间到，自动结束回合（人类回合通用）
+      // 攻击时间结束：不再强制结束回合，仅禁用攻击；
+      // 建造 / 处理政治事件 / 招募等内政操作仍可继续，由玩家自行点「结束回合」
       if (PLAYERS[currentPlayer].isHuman && !gameOver) {
-        showDiplNotice('⏱️ 回合计时结束！');
-        endTurn();
-        buildUnitPanel();
+        attackAllowed = false;
+        updateTimerDisplay(); // 立即重绘为「仅内政」状态，明确攻击已禁用
+        showDiplNotice('⏱️ 攻击时间结束！攻击已禁用；建造 / 处理政治事件仍可继续，请点「结束回合」');
       }
     }
   }, 1000);
@@ -6791,12 +6836,26 @@ function stopTurnTimer() {
 function updateTimerDisplay() {
   const timerEl = document.getElementById('turn-timer');
   const secondsEl = document.getElementById('timer-seconds');
-  if (secondsEl) secondsEl.textContent = turnTimeLeft;
+  const labelEl = document.getElementById('timer-label');
+  const iconEl = document.getElementById('timer-icon');
+  const unitEl = document.getElementById('timer-unit');
   if (timerEl) {
-    if (turnTimeLeft <= 10) {
-      timerEl.classList.add('warning');
-    } else {
+    // 攻击时间窗口状态：未分配到这 60 秒 → 禁止攻击，但建造/政治等内政照常
+    if (!attackAllowed) {
       timerEl.classList.remove('warning');
+      timerEl.classList.add('locked');
+      if (labelEl) labelEl.textContent = '内政';
+      if (iconEl) iconEl.textContent = '🛡️';
+      if (secondsEl) secondsEl.textContent = '∞';
+      if (unitEl) unitEl.style.display = 'none';
+    } else {
+      timerEl.classList.remove('locked');
+      if (turnTimeLeft <= 10) timerEl.classList.add('warning');
+      else timerEl.classList.remove('warning');
+      if (labelEl) labelEl.textContent = '攻击';
+      if (iconEl) iconEl.textContent = '⚔️';
+      if (secondsEl) secondsEl.textContent = turnTimeLeft;
+      if (unitEl) unitEl.style.display = '';
     }
   }
 }
@@ -7064,13 +7123,9 @@ function removeallianceData(a, b) {
 }
 
 // ---- 沦陷区显示辅助 ----
-// 获取当前应当显示的沦陷区格子
-// 规则：若当前势力有联盟，显示联盟所有成员的沦陷区；否则仅显示自身沦陷区
+// 仅返回“我的”沦陷区：从玩家0丢失、当前被他人占据的格子（夺回 owner 变回 0 即自动移出）
 function getFallenHexes() {
-  const vp = viewingPlayer();
-  const allyId = getAllyOf(vp);
-  const ids = (allyId !== -1) ? [vp, allyId] : [vp];
-  return hexes.filter(h => h.owner !== -1 && h.fallTurn >= 0 && ids.includes(h._prevOwner));
+  return hexes.filter(h => h.fallTurn >= 0 && h._prevOwner === 0 && h.owner !== 0);
 }
 
 // ---- 成功率计算 ----
@@ -10957,9 +11012,9 @@ function drawHex(h, hexIdx, isSelected, isNeighbor, anim, isDragTarget) {
   if (h._customColor) {
     fillColor = h._customColor;
   }
-  // 编辑器模式：有归属时使用势力颜色
-  else if (mapEditorMode && h.owner !== -1) {
-    fillColor = PLAYERS[h.owner] ? PLAYERS[h.owner].color : hexColor(h.owner);
+  // 编辑器模式：有归属时使用固定阵营颜色（不再依赖 PLAYERS，避免未初始化问题）
+  else if (mapEditorMode && h.owner >= 0 && EDITOR_FACTIONS[h.owner]) {
+    fillColor = EDITOR_FACTIONS[h.owner].color;
   }
   
   // 确保 terrain 默认值为 'plain'
@@ -11231,14 +11286,11 @@ function drawHex(h, hexIdx, isSelected, isNeighbor, anim, isDragTarget) {
     }
   }
 
-  // 沦陷区标识：深色斜条纹（显示与当前查看势力[含其盟友]相关的沦陷格）
-  if (h.owner !== -1 && h.fallTurn >= 0 && h._prevOwner !== undefined && h._prevOwner !== -1 && !mapEditorMode) {
+  // 沦陷区标识：深色斜条纹（仅显示“我的”沦陷区——从玩家0丢失、当前被他人占据的格子；
+  // 一旦玩家夺回 owner 变回 0 即自动不再显示）
+  if (h.fallTurn >= 0 && h._prevOwner === 0 && h.owner !== 0 && !mapEditorMode) {
     try {
-      const vp = viewingPlayer();
-      const vpAlly = getAllyOf(vp);
-      const showIds = (vpAlly !== -1) ? [vp, vpAlly] : [vp];
-      if (showIds.includes(h._prevOwner)) {
-        // 斜纹用 CanvasPattern 填充六边形路径：fill 天然精确裁剪在格子内，不会像线段+clip 那样溢出到相邻格
+      // 斜纹用 CanvasPattern 填充六边形路径：fill 天然精确裁剪在格子内，不会像线段+clip 那样溢出到相邻格
         if (!__fallenPattern) {
           const pcv = document.createElement('canvas');
           pcv.width = pcv.height = 6;
@@ -11260,7 +11312,6 @@ function drawHex(h, hexIdx, isSelected, isNeighbor, anim, isDragTarget) {
           ctx.fillStyle = __fallenPattern;
           ctx.fill();
         }
-      }
     } catch (e) {}
   }
 
@@ -12101,7 +12152,7 @@ function showTooltip(e, hi) {
       }
     }
   }
-  const fallLabel = (h.owner !== -1 && h.fallTurn >= 0)
+  const fallLabel = (h.fallTurn >= 0 && h._prevOwner === 0 && h.owner !== 0)
     ? `<br><span style="color:#94a3b8">🏳 沦陷区（第 ${h.fallTurn} 回合沦陷）</span>`
     : '';
   tip.innerHTML = `<b style="color:${h.owner === -1 ? '#9ca3af' : hexLightColor(h.owner)}">${owner}</b>${fallLabel}${terrainLabel}${stratLabel}${unitLabel}<br>兵力：<b>${h.troops}</b>${extra}`;
@@ -12141,42 +12192,14 @@ function getTerrainIcon(terrain) {
 
 // ---- Pointer Down (start potential drag) ----
 function onPointerDown(e) {
-  // 地图编辑器模式：笔刷绘制
+  // 地图编辑器模式：笔刷绘制（点击/拖拽共用 applyBrushToHex）
   if (mapEditorMode) {
     const { px, py } = eventToCanvas(e);
     const hi = getHexAt(px, py);
     if (hi >= 0 && hi < hexes.length) {
-      try {
-        // 应用笔刷参数
-        const h = hexes[hi];
-        h.owner = editorBrushOwner;
-        h.terrain = editorBrushTerrain;
-        h.value = editorBrushValue;
-        h.troops = editorBrushTroops;
-        // 设置自定义颜色 - 优先使用用户选择的颜色，而不是势力的默认颜色
-        if (editorBrushOwner >= 0 && EDITOR_FACTIONS[editorBrushOwner]) {
-          // 如果用户手动设置了颜色（非默认蓝色），使用手动颜色
-          const defaultColor = EDITOR_FACTIONS[editorBrushOwner].color;
-          if (editorBrushColor !== defaultColor) {
-            h._customColor = editorBrushColor;
-          } else {
-            h._customColor = null; // 使用势力默认颜色
-          }
-        } else if (editorBrushOwner === -1) {
-          h._customColor = editorBrushColor;
-        }
-        
-        editorSelectedHex = hi;
-        mepUpdateHexInfo(hi);
-        scheduleRender();
-        updateFactionList();
-        
-        // 开始拖拽绘制
-        editorDragFrom = hi;
-        editorIsDragging = true;
-      } catch(err) {
-        console.error('Editor pointer down error:', err);
-      }
+      applyBrushToHex(hi);
+      editorDragFrom = hi;
+      editorIsDragging = true;
     }
     e.preventDefault(); e.stopPropagation(); return;
   }
@@ -12268,35 +12291,9 @@ function onPointerDown(e) {
 function onPointerMove(e) {
   if (mapEditorMode) {
     if (editorIsDragging && editorDragFrom >= 0) {
-      try {
-        const { px, py } = eventToCanvas(e);
-        const hi = getHexAt(px, py);
-        if (hi >= 0 && hi < hexes.length) {
-          // 应用笔刷参数
-          const h = hexes[hi];
-          h.owner = editorBrushOwner;
-          h.terrain = editorBrushTerrain;
-          h.value = editorBrushValue;
-          h.troops = editorBrushTroops;
-          // 设置自定义颜色 - 优先使用用户选择的颜色
-          if (editorBrushOwner >= 0 && EDITOR_FACTIONS[editorBrushOwner]) {
-            const defaultColor = EDITOR_FACTIONS[editorBrushOwner].color;
-            if (editorBrushColor !== defaultColor) {
-              h._customColor = editorBrushColor;
-            } else {
-              h._customColor = null;
-            }
-          } else if (editorBrushOwner === -1) {
-            h._customColor = editorBrushColor;
-          }
-          editorSelectedHex = hi;
-          mepUpdateHexInfo(hi);
-          scheduleRender();
-          updateFactionList();
-        }
-      } catch(err) {
-        console.error('Editor pointer move error:', err);
-      }
+      const { px, py } = eventToCanvas(e);
+      const hi = getHexAt(px, py);
+      if (hi >= 0 && hi < hexes.length) applyBrushToHex(hi);
     }
     return;
   }
@@ -12450,6 +12447,12 @@ function onPointerUp(e) {
   } else {
     // 攻击：只有在人类玩家回合才允许
     if (PLAYERS[currentPlayer].isHuman) {
+      // 攻击时间窗口检查：60秒攻击时间结束后禁止玩家主动攻击（教程期间豁免）
+      if (!attackAllowed && !tutActive) {
+        showDiplNotice('⏱️ 攻击时间已结束，攻击已禁用；建造 / 处理政治事件仍可继续，点「结束回合」再战');
+        scheduleRender();
+        return;
+      }
       // 执行攻击
       doAttack(from, to);
       scheduleRender();
@@ -12489,10 +12492,110 @@ canvas.addEventListener('mousedown',  (e) => { pointerDownOnCanvas = true; onPoi
 canvas.addEventListener('mousemove',  onPointerMove);
 window.addEventListener('mouseup',    (e) => { if (pointerDownOnCanvas) { pointerDownOnCanvas = false; onPointerUp(e); } });
 canvas.addEventListener('mouseleave', onPointerLeave);
-// Touch support
-canvas.addEventListener('touchstart', onPointerDown,  { passive: false });
-canvas.addEventListener('touchmove',  onPointerMove,  { passive: false });
-canvas.addEventListener('touchend',   onPointerUp,    { passive: false });
+// ===== 触摸手势层：单指平移/点选 + 双指缩放 =====
+// （旧的 touchstart→onPointerDown 直连无法处理双指缩放，且单指拖动空地不会平移，故独立实现）
+let touchMode = null;            // 'action' | 'pan' | 'pinch'
+let touchMoved = false;
+let touchPanSX = 0, touchPanSY = 0, touchPanOX = 0, touchPanOY = 0;
+let pinchStartDist = 0, pinchStartScale = 0, pinchStartOX = 0, pinchStartOY = 0;
+const TAP_THRESHOLD = 10;       // 移动超过此像素才算拖动（否则视为点按）
+canvas.style.touchAction = 'none'; // 阻止浏览器默认的滚动/缩放手势
+
+// 用 touchend 的 changedTouches 构造合成事件，避免 eventToCanvas 读空 touches 崩溃
+function touchTapEvent(e) {
+  const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]);
+  return { clientX: t ? t.clientX : 0, clientY: t ? t.clientY : 0 };
+}
+function touchDist(e) {
+  const a = e.touches[0], b = e.touches[1];
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+function touchMid(e) {
+  const a = e.touches[0], b = e.touches[1];
+  return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    touchMode = 'pinch';
+    isDragging = false; dragFrom = -1; dragTo = -1; // 复位可能的攻击拖拽态
+    pinchStartDist = touchDist(e);
+    pinchStartScale = viewScale;
+    pinchStartOX = viewOX; pinchStartOY = viewOY;
+    const m = touchMid(e); pinchSX = m.x; pinchSY = m.y;
+    return;
+  }
+  const t = e.touches[0];
+  const { px, py } = eventToCanvas(e);
+  const hi = getHexAt(px, py);
+  const humanId = PLAYERS.findIndex(p => p.isHuman);
+  // 点在己方可控格 → 攻击/增援拖拽；否则 → 平移/点按
+  if (hi >= 0 && humanId >= 0 && hexes[hi].owner === humanId) {
+    touchMode = 'action';
+    onPointerDown(e);
+  } else {
+    touchMode = 'pan';
+    touchMoved = false;
+    touchPanSX = t.clientX; touchPanSY = t.clientY;
+    touchPanOX = viewOX; touchPanOY = viewOY;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (touchMode === 'pinch' && e.touches.length >= 2) {
+    const dist = touchDist(e);
+    const m = touchMid(e);
+    if (pinchStartDist > 0) {
+      const factor = dist / pinchStartDist;
+      const newScale = Math.max(SCALE_MIN, Math.min(SCALE_MAX, pinchStartScale * factor));
+      // 以双指中点为锚点缩放
+      viewOX = m.x - (m.x - pinchStartOX) * (newScale / pinchStartScale);
+      viewOY = m.y - (m.y - pinchStartOY) * (newScale / pinchStartScale);
+      viewScale = newScale;
+      clampView();
+      updateZoomLabel();
+      scheduleRender();
+    }
+    return;
+  }
+  if (touchMode === 'action') { onPointerMove(e); return; }
+  if (touchMode === 'pan') {
+    const t = e.touches[0];
+    const dx = t.clientX - touchPanSX, dy = t.clientY - touchPanSY;
+    if (!touchMoved && Math.hypot(dx, dy) > TAP_THRESHOLD) touchMoved = true;
+    viewOX = touchPanOX + dx;
+    viewOY = touchPanOY + dy;
+    clampView();
+    scheduleRender();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (touchMode === 'action') {
+    if (e.touches.length === 0) { onPointerUp(touchTapEvent(e)); touchMode = null; }
+    return;
+  }
+  if (touchMode === 'pinch') {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      touchMode = 'pan'; touchMoved = true; // 防止松一指时误触发点选
+      touchPanSX = t.clientX; touchPanSY = t.clientY;
+      touchPanOX = viewOX; touchPanOY = viewOY;
+    } else { touchMode = null; }
+    return;
+  }
+  if (touchMode === 'pan') {
+    if (!touchMoved) {
+      onPointerDown(touchTapEvent(e)); // 点按：选择/取消选择
+      onPointerUp(touchTapEvent(e));
+    }
+    touchMode = null;
+    const tip = document.getElementById('tooltip'); if (tip) tip.style.display = 'none';
+  }
+}, { passive: false });
 
 // ---- Mouse wheel zoom ----
 canvas.addEventListener('wheel', (e) => {
@@ -14136,7 +14239,8 @@ document.getElementById('btn-end-turn').addEventListener('click', () => {
   if (PLAYERS[currentPlayer].isHuman && !gameOver) { stopTurnTimer(); endTurn(); buildUnitPanel(); }
 });
 document.getElementById('btn-politics').addEventListener('click', () => {
-  if (!gameOver && PLAYERS[currentPlayer].isHuman) showPoliticsPanel();
+  // 任何回合（含 AI 回合）都可查看/处理政治事件（内政不受攻击时间限制）
+  if (!gameOver) showPoliticsPanel();
 });
 
 // 右上角操作按钮收起/展开
@@ -14152,15 +14256,17 @@ function toggleActionButtons() {
 function togglePoliticsShortcut() {
   const existing = document.getElementById('politics-modal');
   if (existing) { existing.remove(); return; }
-  if (!gameOver && PLAYERS[currentPlayer].isHuman) { showPoliticsPanel(); }
+  // 任何回合（含 AI 回合）都可处理政治事件（内政不受攻击时间限制）
+  if (!gameOver) { showPoliticsPanel(); }
 }
 function toggleBuildShortcut() {
   const existing = document.getElementById('build-modal');
   if (existing) { closeBuildModal(); return; }
   if (gameOver) return;
-  const myHexes = hexes.map((h, i) => ({ h, i })).filter(({ h }) => h.owner === currentPlayer);
+  // 任何回合（含 AI 回合）都可建造：内政不受攻击时间限制，仅攻击受 60s 窗口约束
+  const humanId = (isPvpMode && PLAYERS[currentPlayer] && PLAYERS[currentPlayer].isHuman) ? currentPlayer : 0;
+  const myHexes = hexes.map((h, i) => ({ h, i })).filter(({ h }) => h.owner === humanId);
   if (myHexes.length === 0) { showDiplNotice('❌ 没有可建造的领土！'); return; }
-  if (!PLAYERS[currentPlayer].isHuman) { showDiplNotice('⏳ 当前是 AI 回合，建造暂停'); return; }
   openBuildModal(myHexes[0].i);
 }
 function endTurnShortcut() {
@@ -16123,7 +16229,9 @@ let recruitHexIdx = -1;
 function openRecruitModal(hexIdx) {
   if (gameOver) return;
   const h = hexes[hexIdx];
-  if (!h || h.owner !== currentPlayer) return; // 只允许当前玩家招募自己领土的士兵
+  // 任何回合（含 AI 回合）都可招募自己的领土：内政不受攻击时间限制，仅攻击受 60s 窗口约束
+  const humanId = (isPvpMode && PLAYERS[currentPlayer] && PLAYERS[currentPlayer].isHuman) ? currentPlayer : 0;
+  if (!h || h.owner !== humanId) return;
 
   const p = h.owner;
   recruitHexIdx = hexIdx;
@@ -16439,15 +16547,11 @@ function buildStructure(player, hexIdx, buildingTypeIdx) {
 // 建造按钮点击事件
 document.getElementById('btn-build').addEventListener('click', () => {
   if (gameOver) return;
-  // 选择一个己方格子来建造
-  const myHexes = hexes.map((h, i) => ({ h, i })).filter(({ h }) => h.owner === currentPlayer);
+  // 任何回合（含 AI 回合）都可建造：内政不受攻击时间限制，仅攻击受 60s 窗口约束
+  const humanId = (isPvpMode && PLAYERS[currentPlayer] && PLAYERS[currentPlayer].isHuman) ? currentPlayer : 0;
+  const myHexes = hexes.map((h, i) => ({ h, i })).filter(({ h }) => h.owner === humanId);
   if (myHexes.length === 0) {
     showDiplNotice('❌ 没有可建造的领土！');
-    return;
-  }
-  // AI 回合时：建造按钮禁用，但点击己方格子仍可查看/增援
-  if (!PLAYERS[currentPlayer].isHuman) {
-    showDiplNotice('⏳ 当前是 AI 回合，建造暂停');
     return;
   }
   // 默认选第一个己方格子
@@ -16457,28 +16561,19 @@ document.getElementById('btn-build').addEventListener('click', () => {
 // 右键点击己方格子打开建造面板
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  // 地图编辑器模式：右键快速设置为笔刷参数
+  // 地图编辑器模式：右键快速将笔刷设为该格参数，便于连续绘制同类格子
   if (mapEditorMode) {
     const { px, py } = eventToCanvas(e);
     const hi = getHexAt(px, py);
     if (hi >= 0 && hi < hexes.length) {
       const h = hexes[hi];
-      // 设置笔刷为当前格子的参数
       editorBrushTerrain = h.terrain;
-      editorBrushOwner = h.owner;
       editorBrushValue = h.value;
       editorBrushTroops = h.troops || 0;
-      
-      // 更新笔刷控件显示
-      const brushTerrain = document.getElementById('mep-brush-terrain');
-      const brushOwner = document.getElementById('mep-brush-owner');
-      const brushValue = document.getElementById('mep-brush-value');
-      const brushTroops = document.getElementById('mep-brush-troops');
-      if (brushTerrain) brushTerrain.value = h.terrain;
-      if (brushOwner) brushOwner.value = h.owner;
-      if (brushValue) brushValue.value = h.value;
-      if (brushTroops) brushTroops.value = h.troops || 0;
-      
+      setBrushFaction(h.owner >= 0 ? h.owner : -1);
+      const bt = document.getElementById('mep-brush-terrain'); if (bt) bt.value = h.terrain;
+      const bv = document.getElementById('mep-brush-value'); if (bv) bv.value = h.value;
+      const btr = document.getElementById('mep-brush-troops'); if (btr) btr.value = h.troops || 0;
       editorSelectedHex = hi;
       mepUpdateHexInfo(hi);
       scheduleRender();
@@ -16497,13 +16592,9 @@ canvas.addEventListener('contextmenu', (e) => {
   const { px, py } = eventToCanvas(e);
   const hi = getHexAt(px, py);
   if (hi >= 0) {
-    // AI回合：点击己方格子打开建造面板
-    if (!PLAYERS[currentPlayer].isHuman && hexes[hi].owner === 0) {
-      openBuildModal(hi);
-      return;
-    }
-    // 己方回合：点击己方格子打开招募弹窗
-    if (PLAYERS[currentPlayer].isHuman && hexes[hi].owner === currentPlayer) {
+    // 任何回合（含 AI 回合）右击己方格子 → 打开招募弹窗（内政，不受攻击时间限制）
+    const humanId = (isPvpMode && PLAYERS[currentPlayer] && PLAYERS[currentPlayer].isHuman) ? currentPlayer : 0;
+    if (hexes[hi].owner === humanId) {
       openRecruitModal(hi);
     }
   }
@@ -17500,6 +17591,7 @@ const tutDescEl   = document.getElementById('tut-desc');
 const tutHintEl   = document.getElementById('tut-action-hint');
 const tutProgress = document.getElementById('tut-progress');
 const tutNextBtn  = document.getElementById('tut-next');
+const tutPrevBtn  = document.getElementById('tut-prev');
 const tutSkipBtn  = document.getElementById('tut-skip');
 
 function tutBuildProgress() {
@@ -17583,6 +17675,7 @@ function tutShowStep(step) {
   tutWaitingForAction = !!s.waitFor;
   tutNextBtn.disabled = tutWaitingForAction;
   tutNextBtn.textContent = step === TUT_TOTAL - 1 ? '完成教学 ✓' : '下一步 →';
+  if (tutPrevBtn) tutPrevBtn.disabled = step === 0;
 
   tutBuildProgress();
 
@@ -17683,6 +17776,7 @@ function tutStart(fromStep) {
   tutActive = true;
   tutBubble.style.display = '';
   document.getElementById('btn-tutorial').style.display = 'none';
+  closeAllModals(); // 开场清场：确保没有弹窗挡住教学目标
   // 给玩家充足的起始资源，确保「招募 / 建造」教学步骤一定可以完成
   try {
     if (resources && resources[0]) {
@@ -17711,10 +17805,14 @@ function tutEnd() {
   tutBubble.style.display = 'none';
   tutHL.classList.remove('show');
   document.getElementById('btn-tutorial').style.display = '';
+  closeAllModals(); // 完成/跳过教学时同样清场，不留残留弹窗
   appendLog('🎓', '教学完成！开始你的征服之旅吧！', 0);
 }
 
 function tutAdvance() {
+  // 关键修复：进入下一步前关掉所有弹窗（建造/招募面板等），
+  // 避免上一步打开的面板一直挂着，挡住下一步要点的按钮（如右上「🏛️政治」）
+  closeAllModals();
   if (tutStep < TUT_TOTAL - 1) {
     tutShowStep(tutStep + 1);
   } else {
@@ -17722,10 +17820,18 @@ function tutAdvance() {
   }
 }
 
+function tutBack() {
+  if (tutStep <= 0) return;
+  // 回退时同样清场，避免上一步打开的面板（建造/招募等）挡住教学内容
+  closeAllModals();
+  tutShowStep(tutStep - 1);
+}
+
 // Button events
 tutNextBtn.addEventListener('click', () => {
   if (!tutNextBtn.disabled) tutAdvance();
 });
+tutPrevBtn.addEventListener('click', tutBack);
 tutSkipBtn.addEventListener('click', tutEnd);
 // Help modal toggle & draggable ? button
 (function() {
@@ -20092,6 +20198,7 @@ function openMapEditor() {
   editorBrushTerrain = 'plain';
   editorBrushValue = 0;
   editorBrushTroops = 1;
+  editorBrushColor = null;
   editorDragFrom = -1;
   editorIsDragging = false;
   
@@ -20107,12 +20214,10 @@ function openMapEditor() {
   const panel = document.getElementById('mapeditor-panel');
   if (panel) panel.classList.add('show');
 
-  // 更新势力选项
-  mepRefreshOwnerOptions();
-  const brushOwner = document.getElementById('mep-brush-owner');
-  if (brushOwner) brushOwner.value = '-1';
+  // 初始化笔刷（统一笔刷式：阵营按钮组）
   editorSelectedHex = -1;
   mepUpdateHexInfo(-1);
+  setBrushFaction(-1);
 
   // 设置笔刷控件的初始值
   const brushTerrain = document.getElementById('mep-brush-terrain');
@@ -20194,119 +20299,87 @@ function updateFactionList() {
     if (hintEl) hintEl.style.display = 'none';
     return;
   }
-  
-  // 统计每种颜色的格子数量
-  const colorMap = {};
-  let totalColored = 0;
-  
+  // 按阵营 id（0-3）统计存在的势力
+  const stats = {};
   hexes.forEach(h => {
-    let color = null;
-    let ownerName = '未知';
-    
-    // 优先使用自定义颜色
-    if (h._customColor && h._customColor !== '') {
-      color = h._customColor;
-      ownerName = EDITOR_FACTIONS[h.owner] ? EDITOR_FACTIONS[h.owner].name : '用户';
-    } else if (h.owner >= 0 && h.owner < EDITOR_FACTIONS.length) {
-      // 使用势力默认颜色
-      color = EDITOR_FACTIONS[h.owner].color;
-      ownerName = EDITOR_FACTIONS[h.owner].name;
-    } else {
-      return; // 无主格子跳过
+    if (h.owner >= 0 && h.owner <= 3) {
+      if (!stats[h.owner]) stats[h.owner] = { count: 0, troops: 0 };
+      stats[h.owner].count++;
+      stats[h.owner].troops += (h.troops || 0);
     }
-    
-    totalColored++;
-    if (!colorMap[color]) {
-      colorMap[color] = { count: 0, name: ownerName };
-    }
-    colorMap[color].count++;
   });
-  
-  const colors = Object.keys(colorMap);
-  
-  if (colors.length === 0) {
+  const ids = Object.keys(stats).map(Number).sort((a, b) => a - b);
+  if (ids.length === 0) {
     listEl.innerHTML = '<div style="color:#64748b;font-size:0.78rem;padding:8px 0;">暂无势力</div>';
     if (hintEl) hintEl.style.display = 'none';
     return;
   }
-  
-  // 构建势力列表HTML
   let html = '';
-  colors.forEach(color => {
-    const data = colorMap[color];
-    const isHuman = !!editorFactionIsHuman[color];
-    
-    // 统计该势力的总兵力
-    const territoryHexes = hexes.filter(h => {
-      let hcolor = null;
-      if (h._customColor && h._customColor !== '') {
-        hcolor = h._customColor;
-      } else if (h.owner >= 0 && h.owner < EDITOR_FACTIONS.length) {
-        hcolor = EDITOR_FACTIONS[h.owner].color;
-      }
-      return hcolor === color && h.owner !== -1;
-    });
-    const totalTroops = territoryHexes.reduce((sum, h) => sum + (h.troops || 1), 0);
-    const totalValues = territoryHexes.reduce((sum, h) => sum + (h.value || 0), 0);
-    
-    html += '<div class="mep-faction-item" style="cursor:pointer;" onclick="openFactionEditor(\'' + color + '\')">' +
-      '<div class="mep-faction-color" style="background:' + color + '"></div>' +
-      '<span class="mep-faction-name">' + data.name + '</span>' +
-      '<span class="mep-faction-count">' + data.count + ' 格</span>' +
-      '<span class="mep-faction-count">兵:' + totalTroops + '</span>' +
-      '<button class="mep-faction-toggle' + (isHuman ? ' is-human' : '') + '" onclick="event.stopPropagation();toggleFactionHuman(\'' + color + '\')">' + (isHuman ? '玩家' : 'AI') + '</button>' +
+  ids.forEach(id => {
+    const f = EDITOR_FACTIONS[id];
+    const isHuman = !!editorFactionIsHuman[id];
+    html += '<div class="mep-faction-item" style="display:flex;align-items:center;gap:8px;padding:4px 0;">' +
+      '<div style="width:16px;height:16px;border-radius:3px;background:' + f.color + ';flex:none;"></div>' +
+      '<span style="flex:1;font-size:0.82rem;color:#cbd5e1;">' + f.name + '方</span>' +
+      '<span style="font-size:0.74rem;color:#94a3b8;">' + stats[id].count + ' 格 · 兵 ' + stats[id].troops + '</span>' +
+      '<button class="mep-faction-toggle' + (isHuman ? ' is-human' : '') + '" onclick="toggleFactionHuman(' + id + ')" style="padding:2px 10px;font-size:0.72rem;border-radius:4px;border:1px solid ' + (isHuman ? '#22c55e' : '#475569') + ';background:' + (isHuman ? '#22c55e22' : 'transparent') + ';color:' + (isHuman ? '#86efac' : '#94a3b8') + ';cursor:pointer;">' + (isHuman ? '玩家' : 'AI') + '</button>' +
     '</div>';
   });
-  
   listEl.innerHTML = html;
-  
-  // 检查势力数量
-  if (hintEl) {
-    if (colors.length < 2) {
-      hintEl.style.display = 'block';
-    } else {
-      hintEl.style.display = 'none';
-    }
-  }
+  if (hintEl) hintEl.style.display = (ids.length < 2) ? 'block' : 'none';
 }
 
-// 切换势力人机状态（AI/玩家）
-function toggleFactionHuman(color) {
-  editorFactionIsHuman[color] = !editorFactionIsHuman[color];
+// 切换势力人机状态（AI/玩家），key=阵营id
+function toggleFactionHuman(id) {
+  editorFactionIsHuman[id] = !editorFactionIsHuman[id];
   updateFactionList();
-}
-
-function mepRefreshOwnerOptions() {
-  const sel = document.getElementById('mep-sel-owner');
-  const brushSel = document.getElementById('mep-brush-owner');
-  
-  // 只保留无主、玩家、AI三种选项
-  const html = '<option value="-1">无主</option>' + 
-    EDITOR_FACTIONS.map((p, i) => 
-      '<option value="' + i + '">' + p.name + '</option>'
-    ).join('');
-  
-  if (sel) sel.innerHTML = html;
-  if (brushSel) brushSel.innerHTML = html;
 }
 
 function mepRefreshBrushColorPreview() {
   const colorInput = document.getElementById('mep-brush-color');
-  if (colorInput) colorInput.value = editorBrushColor;
+  if (colorInput) {
+    colorInput.value = (editorBrushOwner >= 0 && editorBrushColor)
+      ? editorBrushColor
+      : (editorBrushOwner >= 0 ? EDITOR_FACTIONS[editorBrushOwner].color : '#3b82f6');
+  }
 }
 
-// 编辑器：势力下拉框改变时，自动设置对应势力的默认颜色
-function onEditorBrushOwnerChange(sel) {
-  const val = parseInt(sel.value);
-  if (val >= 0 && EDITOR_FACTIONS[val]) {
-    editorBrushOwner = val;
-    editorBrushColor = EDITOR_FACTIONS[val].color;
-    mepRefreshBrushColorPreview();
-  } else {
-    editorBrushOwner = -1;
-    // 无主状态使用当前色板颜色
-    mepRefreshBrushColorPreview();
+// 选择笔刷阵营（统一笔刷式核心）：-1=无主，0-3=蓝红绿橙
+function setBrushFaction(f) {
+  editorBrushOwner = f;
+  document.querySelectorAll('#mep-faction-bar .mep-fbtn').forEach(b => {
+    const on = parseInt(b.dataset.f) === f;
+    const fc = f === -1 ? '#94a3b8' : (EDITOR_FACTIONS[f] ? EDITOR_FACTIONS[f].color : '#334155');
+    const fl = f === -1 ? '#e2e8f0' : (EDITOR_FACTIONS[f] ? EDITOR_FACTIONS[f].light : '#cbd5e1');
+    b.style.borderColor = on ? fc : '#334155';
+    b.style.background = on ? (f === -1 ? '#334155' : fc + '33') : '#1e293b';
+    b.style.color = on ? fl : '#cbd5e1';
+  });
+  if (f >= 0) {
+    editorBrushColor = null;
+    const ci = document.getElementById('mep-brush-color');
+    if (ci) ci.value = EDITOR_FACTIONS[f].color;
   }
+}
+
+// 将当前笔刷应用到指定格子（点击与拖拽共用）
+function applyBrushToHex(hi) {
+  if (hi < 0 || hi >= hexes.length) return;
+  const h = hexes[hi];
+  h.owner = editorBrushOwner;
+  h.terrain = editorBrushTerrain;
+  h.value = editorBrushValue;
+  h.troops = editorBrushTroops;
+  if (editorBrushOwner >= 0) {
+    const defColor = EDITOR_FACTIONS[editorBrushOwner].color;
+    h._customColor = (editorBrushColor && editorBrushColor !== defColor) ? editorBrushColor : null;
+  } else {
+    h._customColor = null;
+  }
+  editorSelectedHex = hi;
+  mepUpdateHexInfo(hi);
+  scheduleRender();
+  updateFactionList();
 }
 
 function mepUpdateHexInfo(hexIdx) {
@@ -20315,81 +20388,30 @@ function mepUpdateHexInfo(hexIdx) {
   if (!card) return;
 
   if (hexIdx < 0 || !hexes || hexIdx >= hexes.length) {
-    card.innerHTML = '<span style="color:#475569">点击任意格子查看信息</span>';
-    // 更新地图统计
-    if (statsDiv && hexes && hexes.length > 0) {
-      const total = hexes.length;
-      const ownerCount = {};
-      hexes.forEach(h => { ownerCount[h.owner] = (ownerCount[h.owner] || 0) + 1; });
-      const ownerStr = Object.entries(ownerCount).map(([k,v]) => {
-        const name = k === '-1' ? '无主' : ((typeof PLAYERS !== 'undefined' && PLAYERS[parseInt(k)]) ? PLAYERS[parseInt(k)].name : '阵营' + (parseInt(k)+1));
-        return `${name}:${v}`;
-      }).join(' | ');
-      statsDiv.innerHTML = `总计: ${total} 格 | ${ownerStr}`;
-    }
-    return;
+    card.innerHTML = '点击任意格子查看';
+  } else {
+    const h = hexes[hexIdx];
+    const ownerName = h.owner === -1 ? '无主' : (EDITOR_FACTIONS[h.owner] ? EDITOR_FACTIONS[h.owner].name + '方' : '阵营' + h.owner);
+    const fcol = (h.owner >= 0 && EDITOR_FACTIONS[h.owner]) ? EDITOR_FACTIONS[h.owner].light : '#cbd5e1';
+    const tname = { plain:'平原', mountain:'山地', highland:'高原', ocean:'海洋' }[h.terrain] || h.terrain;
+    const vname = h.value > 0 ? '高价值' : '无';
+    card.innerHTML = `#${hexIdx} · <b style="color:${fcol}">${ownerName}</b> · ${tname} · ${vname} · 兵 ${h.troops || 0}`;
   }
 
-  const h = hexes[hexIdx];
-  const ownerName = ownerNameOf(h.owner);
-  const terrainNames = {
-    plain:'平原', mountain:'山地', highland:'高原'
-  };
-  const terrainName = terrainNames[h.terrain] || h.terrain;
-  const valueNames = ['无','高价值'];
-  const valueName = valueNames[h.value] || h.value;
-
-  card.innerHTML = `<table>
-    <tr><td>格子</td><td>#${hexIdx} (r${h.row || '?'}, c${h.col || '?'})</td></tr>
-    <tr><td>地形</td><td>${terrainName}</td></tr>
-    <tr><td>据点</td><td>${valueName} (${h.value})</td></tr>
-    <tr><td>兵力</td><td>${h.troops || 0}</td></tr>
-  </table>`;
-  
   // 更新地图统计
-  if (statsDiv && hexes.length > 0) {
+  if (statsDiv && hexes && hexes.length > 0) {
     const total = hexes.length;
     const ownerCount = {};
     hexes.forEach(h => { ownerCount[h.owner] = (ownerCount[h.owner] || 0) + 1; });
     const ownerStr = Object.entries(ownerCount).map(([k,v]) => {
-      const name = k === '-1' ? '无主' : ((typeof PLAYERS !== 'undefined' && PLAYERS[parseInt(k)]) ? PLAYERS[parseInt(k)].name : '阵营' + (parseInt(k)+1));
+      const name = k === '-1' ? '无主' : (EDITOR_FACTIONS[parseInt(k)] ? EDITOR_FACTIONS[parseInt(k)].name + '方' : '阵营' + (parseInt(k)+1));
       return `${name}:${v}`;
     }).join(' | ');
     statsDiv.innerHTML = `总计: ${total} 格 | ${ownerStr}`;
   }
 }
 
-function mepApply() {
-  if (editorSelectedHex < 0 || !hexes || editorSelectedHex >= hexes.length) return;
-  const h = hexes[editorSelectedHex];
-
-  const selOwner = document.getElementById('mep-sel-owner');
-  const selTerrain = document.getElementById('mep-sel-terrain');
-  const selValue = document.getElementById('mep-sel-value');
-  const inpTroops = document.getElementById('mep-inp-troops');
-
-  if (selOwner) h.owner = parseInt(selOwner.value);
-  if (selTerrain) h.terrain = selTerrain.value;
-  if (selValue) h.value = parseInt(selValue.value);
-  if (inpTroops) h.troops = Math.max(0, parseInt(inpTroops.value) || 0);
-
-  mepUpdateHexInfo(editorSelectedHex);
-  scheduleRender();
-}
-
-function mepApplyToBrush() {
-  if (editorSelectedHex < 0 || !hexes || editorSelectedHex >= hexes.length) return;
-  const h = hexes[editorSelectedHex];
-  
-  // 将笔刷参数应用到当前选中的格子
-  h.owner = editorBrushOwner;
-  h.terrain = editorBrushTerrain;
-  h.value = editorBrushValue;
-  h.troops = editorBrushTroops;
-  
-  mepUpdateHexInfo(editorSelectedHex);
-  scheduleRender();
-}
+// 注：点选式 mepApply / mepApplyToBrush 已移除，统一由笔刷 applyBrushToHex(hi) 处理（点击与拖拽共用）。
 
 // 快捷操作
 function mepFillPlain() {
@@ -20434,31 +20456,16 @@ function mepClearAll() {
 }
 
 function startGameFromEditor(mode) {
-  // 统计地图上所有非中立地块的实际填充颜色
-  const uniqueColors = new Set();
+  // 按阵营 id（0-3）统计实际存在的势力数量（比颜色去重更准确）
+  const factionIds = new Set();
   if (hexes && hexes.length > 0) {
     hexes.forEach(h => {
-      if (h.isOcean || h.terrain === 'ocean') return; // 跳过海洋
-      
-      // 优先取自定义颜色
-      let color = h._customColor || null;
-      // 如果 owner 在 EDITOR_FACTIONS 范围内，取其预设颜色
-      if (!color && h.owner >= 0 && h.owner < EDITOR_FACTIONS.length) {
-        color = EDITOR_FACTIONS[h.owner].color;
-      }
-      // 最终兜底：取实际填充色（用户用笔刷刷的颜色）
-      if (!color && h.fillColor) {
-        color = h.fillColor;
-      }
-      
-      if (color) uniqueColors.add(color);
+      if (h.isOcean || h.terrain === 'ocean') return;
+      if (h.owner >= 0 && h.owner <= 3) factionIds.add(h.owner);
     });
   }
-  
-  // 调试输出
-  console.log('[START_GAME] uniqueColors:', Array.from(uniqueColors), 'size:', uniqueColors.size);
-  if (uniqueColors.size < 2) {
-    alert('⚠️ 无法开始游戏！\n\n地图上至少需要 2 种不同颜色(势力)才能开始。\n\n请使用笔刷工具为不同势力分配不同颜色，并给格子分配所有权。');
+  if (factionIds.size < 2) {
+    alert('⚠️ 无法开始游戏！\n\n地图上至少需要 2 个阵营（蓝/红/绿/橙）才能开始。\n\n请用笔刷给不同格子分配不同阵营。');
     return;
   }
   
@@ -20527,65 +20534,41 @@ function initGameFromEditorMap(modeOverride) {
   supplyLineMode = false;
   supplyLineA = -1;
 
-  // 从地图中提取实际存在的势力颜色
-  const colorToOwner = {};
-  const ownerHexes = {};
+  // ★ 关键修复：直接按阵营 id（0-3）去重映射到连续 PLAYERS 索引，
+  //   不再按颜色去重（颜色微差如 #ef4444 vs #dc2626 曾导致多余/错乱势力）
+  const idToP = {};        // 阵营id → 连续 PLAYERS 索引
+  const ownerHexes = [];
   let ownerCount = 0;
-  
+
   if (hexes && hexes.length > 0) {
     hexes.forEach((h, idx) => {
-      // 如果没有选择地形，默认为草原（plain）
-      if (!h.terrain || h.terrain === '') {
-        h.terrain = 'plain';
+      if (!h.terrain || h.terrain === '') h.terrain = 'plain';
+      if (h.owner < 0 || h.owner > 3) return; // 只处理 4 个固定阵营
+      const id = h.owner;
+      if (idToP[id] === undefined) {
+        const p = ownerCount++;
+        idToP[id] = p;
+        ownerHexes[p] = [];
+        const nation = pickHistoricalNation(EDITOR_FACTIONS[id].color);
+        PLAYERS[p].color = EDITOR_FACTIONS[id].color;
+        PLAYERS[p].light = EDITOR_FACTIONS[id].light;
+        PLAYERS[p].dark = EDITOR_FACTIONS[id].dark;
+        const isHuman = !!editorFactionIsHuman[id];
+        PLAYERS[p].name = nation ? nation.name : (EDITOR_FACTIONS[id].name + '方');
+        PLAYERS[p].playerName = nation ? nation.ruler : '';
+        PLAYERS[p].tag = isHuman ? '玩家' : 'AI';
+        PLAYERS[p].isHuman = isHuman;
       }
-      
-      if (h.owner === -1) return;
-      
-      let color = null;
-      if (h._customColor && h._customColor !== '') {
-        color = h._customColor;
-      } else if (h.owner >= 0 && h.owner < EDITOR_FACTIONS.length) {
-        color = EDITOR_FACTIONS[h.owner].color;
-      }
-      
-      if (!color) return;
-      
-      // 为每个新颜色创建 PLAYERS 索引
-      if (!colorToOwner[color]) {
-        const pi = ownerCount;
-        if (pi < 4) {
-          colorToOwner[color] = pi;
-          ownerHexes[pi] = [];
-          ownerCount++;
-          
-          // 分配名称和颜色（历史国名 + 统治者）
-          const nation = pickHistoricalNation(color);
-          
-          PLAYERS[pi].color = color;
-          PLAYERS[pi].light = color;
-          PLAYERS[pi].dark = color;
-          // ★ 所有势力默认都是 AI，除非用户在编辑器中设为玩家
-          const isHuman = !!editorFactionIsHuman[color];
-          PLAYERS[pi].name = nation ? nation.name : ('势力' + (pi + 1) + '军');
-          PLAYERS[pi].playerName = nation ? nation.ruler : '';
-          PLAYERS[pi].tag = isHuman ? '玩家' : 'AI';
-          PLAYERS[pi].isHuman = isHuman;
-        }
-      }
-      
-      // 记录该势力的所有格子
-      const pi = colorToOwner[color];
-      if (pi !== undefined && ownerHexes[pi]) {
-        ownerHexes[pi].push(idx);
-        // 设置 hex 的 owner 为 PLAYERS 索引
-        hexes[idx].owner = pi;
-      }
+      const p = idToP[id];
+      ownerHexes[p].push(idx);
+      hexes[idx].owner = p;   // 游戏内统一用连续索引
+      h._customColor = null;  // 游戏模式颜色由 PLAYERS 决定，清除编辑器自定义色
     });
   }
   
   // 如果少于 2 个势力，不应该能开始游戏（已在前面检查过）
   if (ownerCount < 2) {
-    alert('⚠️ 地图上至少需要 2 种不同颜色(势力)才能开始游戏！');
+    alert('⚠️ 地图上至少需要 2 个阵营才能开始游戏！');
     return;
   }
   
